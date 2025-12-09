@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 void main() {
   runApp(const MaterialApp(home: GeofenceTestApp()));
@@ -14,33 +15,58 @@ class GeofenceTestApp extends StatefulWidget {
 }
 
 class _GeofenceTestAppState extends State<GeofenceTestApp> {
-  // --- BURAYI DEĞİŞTİRİN: Sabancı Şok Market Koordinatları ---
-  // Google Maps'ten marketin üzerine basılı tutup bu sayıları güncelleyin.
-  final double _targetLat = 40.891200; 
-  final double _targetLng = 29.378500; 
-  // -----------------------------------------------------------
+  // --- SABANCI GARDEN PLANET MARKET KOORDİNATLARI ---
+  final double _targetLat = 40.93333424641602; 
+  final double _targetLng = 29.3122210836386; 
+  // --------------------------------------------------
+
+  // BİLDİRİM NESNESİ
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Position? _targetPosition;
   Position? _currentPosition;
-  final double _geofenceRadius = 15.0; // 15 metreye girince öter
+  final double _geofenceRadius = 20.0; // 10 metreye girince öter
   
   String _status = "Yolda...";
-  Color _statusColor = Colors.orange;
+  Color _statusColor = Colors.orange; // Başlangıçta turuncu olsun
   double _distanceToTarget = 0.0;
-  bool _hasNotified = false; // Sürekli bildirim atmaması için kontrol
+  bool _hasNotified = false; 
 
   StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
-    // Uygulama açılır açılmaz hedefi Sabancı Şok olarak ayarla
     _setHardcodedTarget();
+    _initNotifications(); // Bildirim Servisini Başlat
     _checkPermissions();
   }
 
+  // BİLDİRİM AYARLARI (iOS ve Android)
+  Future<void> _initNotifications() async {
+    // Android için varsayılan ikon
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    // iOS için izin ayarları
+    const DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings(
+      requestSoundPermission: true,
+      requestBadgePermission: true,
+      requestAlertPermission: true,
+    );
+
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsDarwin,
+    );
+
+    // Başlatma ve Hata Yakalama
+    bool? initialized = await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    print("Bildirim Servisi Başlatıldı mı?: $initialized");
+  }
+
   void _setHardcodedTarget() {
-    // Manuel olarak bir Position objesi oluşturuyoruz
     _targetPosition = Position(
       latitude: _targetLat,
       longitude: _targetLng,
@@ -67,8 +93,8 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
 
   void _startLocationStream() {
     const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation, // En yüksek hassasiyet
-      distanceFilter: 0, // Her hareketi algıla
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
     );
 
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
@@ -96,20 +122,20 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
       _distanceToTarget = distance;
     });
 
-    // 15 metrenin altına düştüyse ve daha önce bildirim atmadıysa
+    // BÖLGEYE GİRİŞ KONTROLÜ
     if (distance <= _geofenceRadius) {
       setState(() {
-        _status = "ŞOK MARKETE VARDINIZ!";
+        _status = "THE MARKET'E VARDINIZ!";
         _statusColor = Colors.green;
       });
 
       if (!_hasNotified) {
-        _showArrivalAlert(); // Ekrana bildirim fırlat
-        _hasNotified = true; // Tekrar tekrar fırlatmasın
+        _sendSystemNotification(); // Gerçek bildirimi tetikle
+        _hasNotified = true; 
       }
     } else {
-      // Bölgeden çıkarsa durumu sıfırla (tekrar girerse yine bildirim atar)
-      if (distance > _geofenceRadius + 5) { // 5 metre de tolerans payı
+      // Bölgeden 5 metre uzaklaşınca sistemi sıfırla ki tekrar girince tekrar bildirim atsın
+      if (distance > _geofenceRadius + 5) { 
          setState(() {
           _status = "Markete Gidiliyor...";
           _statusColor = Colors.orange;
@@ -119,22 +145,47 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
     }
   }
 
-  // Bildirim Yerine Geçecek Uyarı Penceresi
-  void _showArrivalAlert() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("📍 HEDEFE ULAŞILDI"),
-        content: const Text("Şu an Şok Market konumundasınız! Geofence başarılı."),
-        backgroundColor: Colors.green[100],
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Tamam"),
-          )
-        ],
-      ),
+  // --- GÜNCELLENMİŞ HATA AYIKLAMALI FONKSİYON ---
+  Future<void> _sendSystemNotification() async {
+    print("--------------------------------------------------");
+    print("1. Bildirim Gönderme Fonksiyonu Tetiklendi.");
+
+    // Android Detayları
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'geofence_channel', 'Geofence Alerts',
+      channelDescription: 'Konum uyarıları',
+      importance: Importance.max,
+      priority: Priority.high,
     );
+    
+    // iOS Detayları
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true, // Ekranda göster
+      presentBadge: true,
+      presentSound: true, // Ses çal
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    try {
+      print("2. 'Show' komutu işletim sistemine gönderiliyor...");
+      
+      await flutterLocalNotificationsPlugin.show(
+        0, 
+        '📍 HEDEFE ULAŞILDI!', 
+        'Şu an The Market konumundasınız! (Mesafe: ${_distanceToTarget.toStringAsFixed(1)}m)', 
+        platformDetails,
+      );
+
+      print("✅ 3. BAŞARILI: Komut hatasız çalıştı. (Eğer ses yoksa telefon sessizdedir)");
+    } catch (e) {
+      print("❌ 3. HATA OLUŞTU: Bildirim gönderilemedi!");
+      print("HATA DETAYI: $e");
+    }
+    print("--------------------------------------------------");
   }
 
   @override
@@ -146,7 +197,7 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("LifeStable: Şok Market Testi")),
+      appBar: AppBar(title: const Text("LifeStable: Geofencing Testi")),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -164,7 +215,7 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
             ),
             const SizedBox(height: 20),
             Text(
-              "Hedef: Sabancı Şok Market\n($_targetLat, $_targetLng)",
+              "Hedef: Garden Planet Sitesi The Market\n($_targetLat, $_targetLng)",
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
@@ -175,11 +226,22 @@ class _GeofenceTestAppState extends State<GeofenceTestApp> {
             ),
             const SizedBox(height: 30),
             Text("Şu anki konumunuz:\n${_currentPosition?.latitude ?? '...'}, ${_currentPosition?.longitude ?? '...'}", textAlign: TextAlign.center),
-             const SizedBox(height: 20),
+            const SizedBox(height: 30),
+            
+            // TEST BUTONU
+            ElevatedButton(
+              onPressed: _sendSystemNotification,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                padding: const EdgeInsets.all(15),
+              ),
+              child: const Text("BİLDİRİMİ TEST ET (MANUEL)", style: TextStyle(color: Colors.white)),
+            ),
+            const SizedBox(height: 10),
             const Text(
-              "Not: Bu testi yapmak için kampüste markete doğru yürümeniz gerekir. Evdeyseniz çalışmaz.",
+              "Yola çıkmadan önce yukarıdaki butona basıp bildirimin geldiğinden emin olun.",
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+              style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ],
         ),
